@@ -1,6 +1,6 @@
 # Bug reproduction for Prisma Client
 
-The issue is that the Query Engine binary versions are pinned to the `prisma2` package rather than the `@prisma/sdk` package.
+The issue is that the CLI and the programmatic API do not behave similarly. A breaking change in the binary breaks all old programmatic API consumers instantly. This includes Studi & Nexus as of now.
 
 ---
 
@@ -8,59 +8,67 @@ Getting the following out of the way to make sure we're all on the same page:
 
 1. When I say that package A's version 0.1.2 is pinned to package B's version 0.1.2, I mean that package A's version 0.1.2 _always_ uses package B's version 0.1.2, no exceptions. Even if a newer version of package B is available, package A v0.1.2 WILL NOT use the latest version of package B.
 
-2. A basic understanding of prisma2 internals is required. In a nutshell, these are the calls that are made to generate Prisma Client
+---
 
-```
-┌─────────────────────┐   calls     ┌─────────────────────┐    calls    ┌─────────────────────┐
-│  prisma2 generate   │────────────▶│   @prisma/client    │────────────▶│     @prisma/sdk     │───────▶ generates Prisma Client
-└─────────────────────┘             └─────────────────────┘             └─────────────────────┘
-```
+## Repository structure
 
-The takeaways here are:
-a. `prisma2` CLI does not generate Prisma Client, `@prisma/sdk` does.
-b. `@prisma/sdk` exposes a programmatic way of generating Prisma Client. This is used by `prisma2`, and by Prisma Studio.
-c. The `@prisma/sdk` package `spawn`s the `query-engine-darwin` binary (during generation).
-d. The `prisma2` package **DOES NOT** `spawn` the `query-engine-darwin` binary. It merely asks `@prisma/client` to do it, which in turn asks `@prisma/sdk` to do it.
+1. There are two folders:
 
-3. v0.1.2 of the SDK is only guaranteed to be compatible with v0.1.2 of the binary. It _may_ be compatible with 0.1.3, but _not always_.
+- The `cli` folder uses the `prisma2` CLI to generate Prisma Client
+- The `programmatic` folder uses the programmatic API to generate Prisma Client
+
+2. You'll want to run `yarn` in both folders to install dependencies.
+
+3. Each folder has a `generate` NPM script that will attempt to generate Prisma Client.
+
+4. Each folder also has a `binary-version` NPM script that will print out the version of the binary that was downloaded during generation.
+
+5. Both folders use a fixed version (2.0.0-preview024) of dependencies. This is because I know a breaking change was introduced between preview024 and preview025, which demonstrates the bug.
+
+6. All NPM scripts are written assuming you're on macOS, if you're on Linux / Windows, these scripts should be easy enough to tweak.
 
 ---
 
-Okay, so now here is how you can reproduce this issue:
+## Reproducing the problem:
 
-1. Clone this repository
-2. Run `yarn` on its root, then `yarn generate`. (This will cause the SDK to download the query engine binary behind the scenes)
-3. Run `yarn binary-version`. (This will run the downloaded query engine binary and print out its version)
-4. Note what the output is. When I created this repo, the output was:
+1. Run `yarn generate` in the `cli` folder. Prisma Client should be generated correctly. If you run `yarn binary-version`, you'll see that the binary version used is: `377df4fe30aa992f13f1ba152cf83d5770bdbc85`.
+2. Run `yarn generate` in the `programmatic` folder. You'll see an error:
 
 ```
-prisma 8814060fa684793b73d07dbfccd4b7777b3361ae
+Error: Get config error: Found argument '/Users/siddhant/Code/prisma2-client-binaries/programmatic/schema.prisma' which wasn't expected, or isn't valid in this context
+
+USAGE:
+    query-engine-darwin cli get-config
+
+For more information try --help
 ```
 
-5. If you get something else, you have reproduced the problem. An explanation follows.
-
-(This repository uses the programmatic API to generate Prisma Client. This is done because it demostrates the problem.)
+3. Run `yarn binary-version` in the `programmatic` folder, and you'll see that the binary version is: `8814060fa684793b73d07dbfccd4b7777b3361ae` (this might be something else for you, the point is, it is not the same as `cli` folder)
 
 ---
 
-Note that the versions of `@prisma/client`, `@prisma/sdk` & `@prisma/fetch-engine` are all fixed in the `package.json`, and herein lies the problem.
+## Explanation:
 
-I expect that a specific version of the SDK (& client by extension) is pinned to a specific version of the binary. This is currently not happening, as you've seen. When I created this repo, I got version `88140...`, and when you ran the same exact repo, you got something else. Now imagine the version you got had a breaking change. **All of a sudden, a script that was working before stops working completely without changing a thing**.
+- On March 12, 2020, 2.0.00-preview024 was released.
 
-### Explanation:
+- On March 25, 2020, a breaking change was introduced in the query engine binary. What this breaking change was is not relevant. What's relevant is that the way the query engine binary is supposed to be spawned needed to change.
 
-When you try to generate Prisma Client, a query engine binary needs to be downloaded. The version of this download is dictated by whoever is initiating the download. The CLI knows what version itself is compatible with, but the SDK does not. AKA: `prisma2` v0.1.2 knows to always use binary version v0.1.2, but SDK v0.1.2 does not know which binary version to download.
+- Today, March 26, 2020, v2.0.0-preview024 of the CLI continues to generate Prisma Client correctly. However, v2.0.0-preview024 of the SDK (the programmatic API) is now broken. Put in other words, **a script that was working before has now stopped working without changing a thing**
 
-So, when you run `prisma2 generate`, the CLI v0.1.2 _specifically_ downloads binary version 0.1.2. However, there is no way to _specifically_ download a binary version when using the programmatic API. The programmatic API will _always_ download the latest alpha binary. (even if it has breaking changes)
+So why is this happening?
 
-So the effect of this is that `prisma2 generate` always works correctly, but the programmatic API does not.
-
----
-
-The root of our problems is that we've pinned the wrong packages together. `prisma2` & `query-engine-darwin` are pinned, when in reality, `@prisma/sdk` & `query-engine-darwin` should be pinned together. Why? Because the SDK is what uses the binary, not `prisma2`.
-
-This means that whoever uses the programmatic API is completely unprotected from breaking changes. If a breaking change is pushed out between preview024 & preview025, all these consumers will be completely broken till preview025 goes out. These consumers are currently Prisma Studio and Nexus. In the future, these will be third party libraries.
+This is happening because `prisma2` CLI knows which binary it is compatible with, but `@prisma/sdk` does not. The SDK _always_ downloads the latest alpha binary, which it may not be compatible with (unless told otherwise).
 
 ---
 
-If we pin `@prisma/sdk` to the `query-engine-darwin` binary, the CLI will continue to work the exact same way, but the programmatic API will also start behaving the way we expect.
+## Proposed solution:
+
+- The root of our problems is that we've pinned the wrong package versions together. `prisma2` & `query-engine-darwin` are pinned, when in fact, `@prisma/sdk` & `query-engine-darwin` should be pinned together.
+
+- A _specific_ version of `prisma2` knows to use a _specific_ version of `query-engine-darwin`. This means that when you use the CLI, it tells the SDK to download a specific version of the binary and use that for generation.
+
+- However, this knowledge of compatibility **needs** to reside in the SDK, because the SDK is what owns (and works with) the binary. It is unreasonable to expect that the SDK consumer (CLI, Studio, Nexus & third-party libraries) tells the SDK which version of the binary to download.
+
+- If the SDK & the binary versions were to be pinned together, the CLI will continue to work the same way as it does right now, but the programmatic API would also stop breaking. AKA: If preview024 works today, it will continue to work forever, even if breaking changes are introduced in the future.
+
+- We need to address this before Beta / GA, because as you've seen, a breaking change today will break Studio and Nexus that were released months ago. Whoever uses the programmatic API is completely unprotected from breaking changes.

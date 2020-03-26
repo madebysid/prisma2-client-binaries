@@ -1,0 +1,12 @@
+{
+  "name": "programmatic",
+  "scripts": {
+    "generate": "node generate.js",
+    "binary-version": "./node_modules/@prisma/client/runtime/query-engine-darwin --version",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "@prisma/client": "2.0.0-preview024",
+    "@prisma/sdk": "2.0.0-preview024"
+  }
+}
