@@ -1,6 +1,6 @@
 # Bug reproduction for Prisma Client
 
-The issue is that the CLI and the programmatic API do not behave similarly. A breaking change in the binary breaks all old programmatic API consumers instantly. This includes Studi & Nexus as of now.
+The issue is that the CLI and the programmatic API do not behave similarly. A breaking change in the binary breaks all old programmatic API consumers instantly. This includes Studio & Nexus as of now.
 
 ---
 
@@ -14,8 +14,8 @@ Getting the following out of the way to make sure we're all on the same page:
 
 1. There are two folders:
 
-- The `cli` folder uses the `prisma2` CLI to generate Prisma Client
-- The `programmatic` folder uses the programmatic API to generate Prisma Client
+    - The `cli` folder uses the `prisma2` CLI to generate Prisma Client
+    - The `programmatic` folder uses the programmatic API to generate Prisma Client
 
 2. You'll want to run `yarn` in both folders to install dependencies.
 
@@ -34,14 +34,14 @@ Getting the following out of the way to make sure we're all on the same page:
 1. Run `yarn generate` in the `cli` folder. Prisma Client should be generated correctly. If you run `yarn binary-version`, you'll see that the binary version used is: `377df4fe30aa992f13f1ba152cf83d5770bdbc85`.
 2. Run `yarn generate` in the `programmatic` folder. You'll see an error:
 
-```
-Error: Get config error: Found argument '/Users/siddhant/Code/prisma2-client-binaries/programmatic/schema.prisma' which wasn't expected, or isn't valid in this context
+    ```
+    Error: Get config error: Found argument '/Users/siddhant/Code/prisma2-client-binaries/programmatic/schema.prisma' which wasn't expected, or isn't valid in this context
 
-USAGE:
-    query-engine-darwin cli get-config
+    USAGE:
+        query-engine-darwin cli get-config
 
-For more information try --help
-```
+    For more information try --help
+    ```
 
 3. Run `yarn binary-version` in the `programmatic` folder, and you'll see that the binary version is: `8814060fa684793b73d07dbfccd4b7777b3361ae` (this might be something else for you, the point is, it is not the same as `cli` folder)
 
@@ -49,11 +49,11 @@ For more information try --help
 
 ## Explanation:
 
-- On March 12, 2020, 2.0.00-preview024 was released.
+- On March 12, 2020, 2.0.0-preview024 was released.
 
 - On March 25, 2020, a breaking change was introduced in the query engine binary. What this breaking change was is not relevant. What's relevant is that the way the query engine binary is supposed to be spawned needed to change.
 
-- Today, March 26, 2020, v2.0.0-preview024 of the CLI continues to generate Prisma Client correctly. However, v2.0.0-preview024 of the SDK (the programmatic API) is now broken. Put in other words, **a script that was working before has now stopped working without changing a thing**
+- Today, March 26, 2020, 2.0.0-preview024 of the CLI continues to generate Prisma Client correctly. However, 2.0.0-preview024 of the SDK (the programmatic API) is now broken. Put in other words, **a script that was working before has now stopped working without changing a thing**
 
 So why is this happening?
 
